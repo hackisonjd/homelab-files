@@ -6,6 +6,7 @@ terraform {
         proxmox = {
             # Tell Terraform to use this source
             source = "telmate/proxmox"
+            version = "3.0.1-rc6"
         }
     }
 }
@@ -25,18 +26,40 @@ resource "proxmox_vm_qemu" "vm-instance" {
     full_clone = true
     cores = 2
     memory = 2048
+    os_type = "cloud-init"
+    scsihw = "virtio-scsi-pci"
+    ipconfig0 = "ip=dhcp"
+    ciuser = var.user
+    cipassword = var.password
+    ciupgrade = true
+    sshkeys = join("\n", var.ssh_keys)
+
+
 
     disk {
+        slot = "scsi0"
         size = "32G"
-        type = "scsi"
+        type = "disk"
         storage = "local-zfs"
-        discard = "on"
+        discard = "true"
+    }
+
+    disk {
+        slot = "ide0"
+        type = "cloudinit"
+        storage = "local-zfs"
     }
 
     network {
+        id = 0
         model = "virtio"
         bridge = "vmbr0"
         firewall = false
         link_down = false
+    }
+
+    serial {
+        id = 0
+        type = "socket"
     }
 }
