@@ -27,7 +27,7 @@ resource "proxmox_vm_qemu" "vm-instance" {
     target_node = "homeserver"
 
     # Clone
-    clone = "ubuntu-cloud"
+    clone = "talos-cloud"
     full_clone = true
 
     # Resources
