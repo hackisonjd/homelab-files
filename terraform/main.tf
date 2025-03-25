@@ -60,7 +60,7 @@ locals {
 # ------------------------------------------------------------------------------
 
 # Create VM instances for K3s cluster nodes
-resource "proxmox_vm_qemu" "k3s-nodes" {
+resource "proxmox_vm_qemu" "k3s_nodes" {
     for_each = local.all_nodes
     
     # VM Identity
