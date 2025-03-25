@@ -4,7 +4,7 @@
 terraform {
     required_providers {
         proxmox = {
-            source = "telmate/proxmox"
+            source  = "telmate/proxmox"
             version = "3.0.1-rc6"
         }
     }
@@ -17,22 +17,53 @@ provider "proxmox" {
     pm_api_token_secret = var.pm_api_token_secret
 }
 
+# Create local variables for node configs
+locals {
+    # All Node configurations
+    master_nodes = {
+        for i in range(1, var.master_config.count + 1) : 
+        "k3s-master-${format("%02d", i)}" => {
+            vmid = 200 + i
+            cores = var.master_config.cores
+            memory = var.master_config.memory
+            disk_size = var.master_config.disk_size
+            ip_address = "${var.base_ip}${i}${var.subnet_mask}"
+            node_type = "master"
+        }
+    }
+
+    worker_nodes = {
+        for i in range(1, var.worker_config.count + 1) : 
+        "k3s-worker-${format("%02d", i)}" => {
+            vmid = 200 + var.master_config.count + i
+            cores = var.worker_config.cores
+            memory = var.worker_config.memory
+            disk_size = var.worker_config.disk_size
+            ip_address = "${var.base_ip}${var.master_config.count + i}${var.subnet_mask}"
+            node_type = "worker"
+        }
+    }
+
+    # Merge all nodes
+    all_nodes = merge(local.master_nodes, local.worker_nodes)
+}
+
 # Create 5 VM instances, 3 master nodes and 2 worker nodes for high availability
-resource "proxmox_vm_qemu" "vm-instance" {
-    count = 5
+resource "proxmox_vm_qemu" "k3s-nodes" {
+    for_each = local.all_nodes
     
     # Identification
-    name = count.index < 3 ? "k3s-master-0${count.index + 1}" : "k3s-worker-0${count.index - 2}"
-    vmid = 200 + count.index
-    target_node = "homeserver"
+    name = each.key
+    vmid = each.value.vmid
+    target_node = var.target_node
 
     # Clone
-    clone = "talos-cloud"
+    clone = var.template_name
     full_clone = true
 
     # Resources
-    cores = count.index < 3 ? 4 : 2
-    memory = count.index < 3 ? 4096 : 2048
+    cores = each.value.cores
+    memory = each.value.memory
 
     # Configuration
     os_type = "cloud-init"
@@ -43,12 +74,12 @@ resource "proxmox_vm_qemu" "vm-instance" {
     cipassword = var.password
     ciupgrade = true
     sshkeys = join("\n", var.ssh_keys)
-    ipconfig0 = "ip=10.0.40.10${count.index + 1}/24,gw=10.0.40.1"
+    ipconfig0 = "ip=${each.value.ip_address},gw=${var.gateway}"
 
     # Storage
     disk {
         slot = "scsi0"
-        size = "32G"
+        size = each.value.disk_size
         type = "disk"
         storage = "local-zfs"
         discard = "true"
@@ -67,7 +98,7 @@ resource "proxmox_vm_qemu" "vm-instance" {
         bridge = "vmbr0"
         firewall = false
         link_down = false
-        tag = 40
+        tag = var.network_tag
     }
 
     # For console
@@ -75,4 +106,6 @@ resource "proxmox_vm_qemu" "vm-instance" {
         id = 0
         type = "socket"
     }
+
+    tags = each.value.node_type
 }
